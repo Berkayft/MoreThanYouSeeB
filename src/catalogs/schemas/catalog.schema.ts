@@ -15,6 +15,12 @@ export class Catalog {
     @Prop({ type: Types.ObjectId, ref: 'User' })
     userId: Types.ObjectId;
 
+    @Prop()
+    lastUpdate: Date;
+
+    @Prop()
+    modelTrainedTime: Date;
+
 }
 
 

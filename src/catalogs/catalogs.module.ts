@@ -11,12 +11,13 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { ConfigModule } from '@nestjs/config';
 import { MulterModule } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
+import { HttpModule } from '@nestjs/axios';
 
 
 @Module({
   imports: [MulterModule.register({
     storage: memoryStorage(),
-  }),UsersModule,AuthModule,ContentsModule,CommunicatesModule,MongooseModule.forFeature([{name: Catalog.name , schema: CatalogSchema}]),ConfigModule],
+  }),UsersModule,AuthModule,ContentsModule,CommunicatesModule,MongooseModule.forFeature([{name: Catalog.name , schema: CatalogSchema}]),ConfigModule,HttpModule],
   controllers: [CatalogsController],
   providers: [CatalogsService],
 })

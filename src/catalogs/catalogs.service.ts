@@ -8,6 +8,9 @@ import { UsersService } from 'src/users/users.service';
 import { ConfigService } from '@nestjs/config';
 import * as AWS from 'aws-sdk';
 import { ContentsService } from 'src/contents/contents.service';
+import axios from 'axios';
+import { HttpService } from '@nestjs/axios';
+import { lastValueFrom } from 'rxjs';
 
 @Injectable()
 export class CatalogsService {
@@ -18,7 +21,7 @@ export class CatalogsService {
   private readonly secretAccessKey = this.configService.get('AWS_SECRET_ACCESS_KEY');
   private s3: AWS.S3;
 
-  constructor(@InjectModel(Catalog.name) private catalogModel: Model<Catalog> , private readonly userService: UsersService,private readonly configService:ConfigService , private readonly contentService: ContentsService) {
+  constructor(@InjectModel(Catalog.name) private catalogModel: Model<Catalog> , private readonly userService: UsersService,private readonly configService:ConfigService , private readonly contentService: ContentsService, private readonly httpService : HttpService) {
     AWS.config.update({
       region: this.region,
       accessKeyId: this.accessKeyId,
@@ -26,7 +29,80 @@ export class CatalogsService {
     });
     this.s3 = new AWS.S3();
   }
+  async updateLastUpdate(catalogId: string) {
+    const catalog = await this.findOne(catalogId);
+    catalog.lastUpdate = new Date();
+    return await catalog.save();
+  }
+  async updateModelTrainedTime(catalogId: string) {
+    const catalog = await this.findOne(catalogId);
+    catalog.modelTrainedTime = new Date();
+    return await catalog.save();
+  }
 
+  async isModelCanUse(catalogId: string) : Promise<boolean> {
+    const catalog = await this.findOne(catalogId);                                 
+    return catalog.lastUpdate < catalog.modelTrainedTime;
+  }
+
+  async isMyModelOk(catalogId: string , date : Date): Promise<boolean> {
+    const catalog = await this.findOne(catalogId);
+    if(this.isModelCanUse(catalogId) && catalog.modelTrainedTime < date){
+      return true;
+    }
+    return false;
+  }
+
+  async findCallBackUrl(index: number, catalogId: string){
+    const catalog = await this.findOne(catalogId);
+    const catalogs = catalog.contents;
+    const content = await this.contentService.findOne(catalogs[index].toString());
+    return content.callBackUrl;
+  }
+
+
+  async trainModel(catalogId: string): Promise<string> {
+    //will be implemented in the future
+    return "modelPath";
+  }
+
+  async sendToFlaskApi(urls: { url: string }[], catalogId: string): Promise<any> {
+    try {
+      console.log('Sending data to Flask API:', { urls, catalogId });
+  
+      const response = await lastValueFrom(
+        this.httpService.post('http://localhost:3500/saveSignedUrls', { urls, catalogId }, {
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+  
+      console.log('Response from Flask API:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error sending data to Flask API:', error.message);
+      throw new Error('Failed to send data to Flask API');
+    }
+  }
+
+  async sendToFlaskApiForMatch(url: string,catalogId): Promise<any> {
+    try {
+      console.log('Sending data to Flask API:', { url, catalogId });
+  
+      const response = await lastValueFrom(
+        this.httpService.post('http://localhost:3500/matchImage', { url, catalogId }, {
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+  
+      console.log('Response from Flask API:', response.data);
+      console.log(response.data.index);
+      return response.data.index;
+    } catch (error) {
+      console.error('Error sending data to Flask API:', error.message);
+      throw new Error('Failed to send data to Flask API');
+  }
+
+  }
 
   //need user id
   async create(createCatalogDto: CreateCatalogDto , email: string ) {
@@ -54,7 +130,12 @@ export class CatalogsService {
     }
   
     const catalog = await this.catalogModel.findById(id);
-    return !!catalog; // Convert to boolean
+    if(catalog){
+      return true;
+    }else {
+      return false;
+    }
+
   }
   async update(id: string, updateCatalogDto: UpdateCatalogDto) {
     return await this.catalogModel.findByIdAndUpdate(id, updateCatalogDto, { new: true });
@@ -88,6 +169,15 @@ export class CatalogsService {
     );
   }
 
+  async matchUploadFile(file , dateString){
+    return await this.s3_upload(
+      file.buffer,
+      this.bucketName,
+      `${dateString}.jpg`,	
+      file.mimetype,
+    );
+  }
+
   async s3_upload(file, bucket, name, mimetype){
     const params = {
         Bucket: bucket,
@@ -112,6 +202,7 @@ export class CatalogsService {
   async addContentToCatalog(catalogId: string, contentId: Types.ObjectId) {
     const catalog = await this.catalogModel.findById(catalogId);
     catalog.contents.push(contentId);
+    await this.updateLastUpdate(catalogId);
     return await catalog.save();
   }
 
@@ -128,6 +219,13 @@ export class CatalogsService {
     const params = {
       Bucket: this.bucketName,
       Key: `${content.imagePath}`,
+    };
+    await this.s3.deleteObject(params).promise();
+  }
+  async removeFromS3(filename){
+    const params = {
+      Bucket: this.bucketName,
+      Key: filename,
     };
     await this.s3.deleteObject(params).promise();
   }
@@ -170,10 +268,17 @@ export class CatalogsService {
     return this.userService.isUserHasCatalog(user._id.toString(), catalog._id);
   }
 
+  async getSignedUrl(filename){
+    const params = {
+      Bucket: this.bucketName,
+      Key: filename,
+      Expires: 60 * 5,
+    };
+    return this.s3.getSignedUrl('getObject', params);
+  }
   //get and set callback url of the content by using catalog id and content id
   async getSignedUrls(catalogId: string) {
     const contents = await this.contentService.findManywithCatalogId(catalogId);
-    console.log(contents);
     const urls = [];
     for (const content of contents) {
       const params = {
@@ -185,6 +290,7 @@ export class CatalogsService {
         url: this.s3.getSignedUrl('getObject', params),
       });
     }
+    console.log(urls);
     return urls;
   }
   async getCallBackUrl(contentId: string){

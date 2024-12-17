@@ -21,6 +21,32 @@ export class CatalogsController {
     private contentService: ContentsService,
   ) {}
 
+  @Post("isCatalogExist/:id")
+  async isCatalogExist(@Param('id') id: string) {
+    return await this.catalogsService.isThereCatalog(id);
+  }
+
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  @Post("matchImage/:catalogId")
+  async matchImage(@UploadedFile() file: Express.Multer.File, @Param('catalogId') catalogId: string) {
+    if (!file) {
+      throw new BadRequestException("No file uploaded");
+    }
+    if(await this.catalogsService.isModelCanUse(catalogId) == false){
+      const urls = await this.catalogsService.getSignedUrls(catalogId);
+      await this.catalogsService.sendToFlaskApi(urls ,catalogId);
+      await this.catalogsService.updateModelTrainedTime(catalogId);
+    }
+
+    const dateString = new Date().toISOString().replace(/:/g, '-');
+    const imagePath = await this.catalogsService.matchUploadFile(file,dateString);
+    const url = await this.catalogsService.getSignedUrl(imagePath);
+    const response = await this.catalogsService.sendToFlaskApiForMatch(url,catalogId);
+    await this.catalogsService.removeFromS3(imagePath);
+    return await this.catalogsService.findCallBackUrl(response,catalogId);
+  }
+
+
 
   @UseGuards(JwtAuthGuard)
   @Post("getusercatalogs")
@@ -70,7 +96,7 @@ export class CatalogsController {
     const filename = await this.catalogsService.uploadFile(file, catalogId, content._id.toString());
     await this.catalogsService.addContentToCatalog(catalogId, content._id);
     await this.contentService.update(content._id.toString(), { imagePath: filename });
-
+    await this.catalogsService.updateLastUpdate(catalogId);
     return "Success";
   }
 
@@ -79,7 +105,12 @@ export class CatalogsController {
   async removeContent(@Param('contentId') contentId: string) {
     return await this.catalogsService.removeContent(contentId);
   }
-
+  @Get('testR/:id')
+  async sendToflaskapi(@Param('id') id: string) {
+    const urls = await this.catalogsService.getSignedUrls(id);
+    await this.catalogsService.sendToFlaskApi(urls ,id);
+    return;
+  }
 
 
   @UseGuards(JwtAuthGuard)
@@ -117,5 +148,7 @@ export class CatalogsController {
   async getSignedUrls(@Param('id') id: string) {
     return await this.catalogsService.getSignedUrls(id);
   }
+
+
 }
 
