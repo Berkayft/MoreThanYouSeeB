@@ -26,7 +26,7 @@ export class CatalogsController {
     return await this.catalogsService.isThereCatalog(id);
   }
 
-  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() , limits: { fileSize: 1024 * 1024 * 24 }}))
   @Post("matchImage/:catalogId")
   async matchImage(@UploadedFile() file: Express.Multer.File, @Param('catalogId') catalogId: string) {
     if (!file) {
@@ -63,7 +63,7 @@ export class CatalogsController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() , limits: { fileSize: 1024 * 1024 * 24 }}))
   @Post("newcontent/:catalogId")
   async addContentToCatalog(
     @Param('catalogId') catalogId: string,
