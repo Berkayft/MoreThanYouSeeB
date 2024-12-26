@@ -45,18 +45,16 @@ $ npm run start:dev
 $ npm run start:prod
 ```
 
-## Run tests
-
-```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+## Configure .env file
 ```
+DB_URI:"mongodbURL"
+JWT_SECRET:"KEY"
+JWT_EXPIRATION:"Time"
+PORT=5000  # if you change this with something you need to change in nextjs and nginx too
+AWS_ACCESS_KEY=""
+AWS_SECRET_ACCESS_KEY="" # you have to open amazon s3 bucket and IAM user with list set and delete permissions I use this image storing
+
+``` 
 
 ## Deployment
 
